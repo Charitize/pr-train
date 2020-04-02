@@ -1,13 +1,10 @@
 // @ts-check
-const octo = require('octonode');
-const promptly = require('promptly');
-const {
-  DEFAULT_REMOTE
-} = require('./consts');
-const fs = require('fs');
-const colors = require('colors');
-const emoji = require('node-emoji');
-const simpleGit = require('simple-git/promise');
+import octo = require('octonode');
+import promptly = require('promptly');
+import { DEFAULT_REMOTE } from './consts';
+import fs = require('fs');
+import colors = require('colors');
+import emoji = require('node-emoji');
 
 /**
  *
@@ -45,7 +42,7 @@ function constructTrainNavigation(branchToPrDict, currentBranch, combinedBranch)
   return contents;
 }
 
-function checkGHKeyExists() {
+export function checkGHKeyExists() {
   try {
     readGHKey()
   } catch (e) {
@@ -81,7 +78,7 @@ function upsertNavigationInBody(newNavigation, body) {
  * @param {string} combinedBranch
  * @param {string} remote
  */
-async function ensurePrsExist(sg, allBranches, combinedBranch, remote = DEFAULT_REMOTE) {
+export async function ensurePrsExist(sg, allBranches, combinedBranch, remote = DEFAULT_REMOTE) {
   //const allBranches = combinedBranch ? sortedBranches.concat(combinedBranch) : sortedBranches;
   const octoClient = octo.client(readGHKey());
   // TODO: take remote name from `-r` value.
@@ -206,9 +203,3 @@ async function ensurePrsExist(sg, allBranches, combinedBranch, remote = DEFAULT_
     console.log(emoji.get('white_check_mark'));
   }, Promise.resolve());
 }
-
-module.exports = {
-  ensurePrsExist,
-  readGHKey,
-  checkGHKeyExists,
-};

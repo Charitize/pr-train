@@ -5,14 +5,25 @@ import { DEFAULT_REMOTE } from './consts';
 import fs = require('fs');
 import colors = require('colors');
 import emoji = require('node-emoji');
+import {SimpleGit} from "simple-git/promise";
+
+interface PullRequestMessage {
+  title: string;
+  body: string;
+}
 
 /**
+ * Creates a PR message based on the head commit of a branch.
  *
- * @param {simpleGit.SimpleGit} sg
- * @param {string} branch
- * @return Promise.<{title: string, body: string}>
+ * The title is based on the first line of the top commit, and the body as the
+ * remaining content of the commit message.
+ *
+ * @param sg SimpleGit client to manage PR message.
+ * @param branch Name of the branch to create a
+ * @return The pull request message.
  */
-async function constructPrMsg(sg, branch) {
+async function constructPrMsg(
+    sg: SimpleGit, branch: string): Promise<PullRequestMessage> {
   const title = await sg.raw(['log', '--format=%s', '-n', '1', branch]);
   const body = await sg.raw(['log', '--format=%b', '-n', '1', branch]);
   return {
@@ -21,13 +32,33 @@ async function constructPrMsg(sg, branch) {
   };
 }
 
+interface BranchDetails {
+  [branch: string]: { title: string, pr: number }
+}
+
 /**
+ * Creates a table of contents for PR train.
  *
- * @param {Object.<string, {title: string, pr: number}>} branchToPrDict
- * @param {string} currentBranch
- * @param {string} combinedBranch
+ * TOC is formatted, wrapped in <pr-train-toc> with a newline separated list of
+ * each branch in the train formatted as:
+ *
+ * If the branch is the current branch in the PR:
+ *  #<prNumber>(<prTitle>) **YOU ARE HERE**
+ *
+ * If the branch is the cumulative combined branch:
+ * #<prNumber> **[combined branch]** (<prTitle>)
+ *
+ * Otherwise:
+ * #<prNumber> (<prTitle>)
+ *
+ * @param branchToPrDict Lookup for branch name to the PR title and number
+ *                       associated with it.
+ * @param currentBranch The name of the branch this PR represents.
+ * @param combinedBranch The combined branch with all PRs in it.
  */
-function constructTrainNavigation(branchToPrDict, currentBranch, combinedBranch) {
+function constructTrainNavigation(
+    branchToPrDict: BranchDetails, currentBranch: string,
+    combinedBranch: string) {
   let contents = '<pr-train-toc>\n\n#### PR chain:\n';
   contents = Object.keys(branchToPrDict).reduce((output, branch) => {
     const maybeHandRight = branch === currentBranch ? '👉 ' : '';
@@ -42,6 +73,11 @@ function constructTrainNavigation(branchToPrDict, currentBranch, combinedBranch)
   return contents;
 }
 
+/**
+ * Checks for a GitHub key to exists in $HOME/.pr-train.
+ *
+ * If the key does not exist, exits the process with code 4.
+ */
 export function checkGHKeyExists() {
   try {
     readGHKey()
@@ -51,7 +87,8 @@ export function checkGHKeyExists() {
   }
 }
 
-function readGHKey() {
+/** Reads the GitHub key from $HOME/.pr-train. */
+function readGHKey(): string {
   return fs
     .readFileSync(`${process.env.HOME}/.pr-train`, 'UTF-8')
     .toString()
@@ -59,11 +96,14 @@ function readGHKey() {
 }
 
 /**
+ * Replaces a PR train table of contents in an existing PR body with the new
+ * table of contents, otherwise adds it at the end.
  *
- * @param {string} newNavigation
- * @param {string} body
+ * @param newNavigation The new table of contents to replace or add to the PR.
+ * @param body The current body of the PR to update.
+ * @return The updated body for the PR to use.
  */
-function upsertNavigationInBody(newNavigation, body) {
+function upsertNavigationInBody(newNavigation: string, body: string): string {
   if (body.match(/<pr-train-toc>/)) {
     return body.replace(/<pr-train-toc>[^]*<\/pr-train-toc>/, newNavigation);
   } else {
@@ -72,13 +112,22 @@ function upsertNavigationInBody(newNavigation, body) {
 }
 
 /**
+ * Creates and updates existing PRs for the PR train.
  *
- * @param {simpleGit.SimpleGit} sg
- * @param {Array.<string>} allBranches
- * @param {string} combinedBranch
- * @param {string} remote
+ * If a PR does not exist, creates one based on the branch with the previous
+ * branch as the branch base. If the PR exists, updates the PR description and
+ * Table of Contents along with updating to the correct base.
+ *
+ * @param sg SimpleGit client for interacting with local git repository.
+ * @param allBranches Ordered list of all of the branches in the PR train.
+ * @param combinedBranch The final branch with the combined changes at the tip
+ *                       of the PR train.
+ * @param remote The name of the remote to use for checking PRs against.
+ *               Defaults to origin.
  */
-export async function ensurePrsExist(sg, allBranches, combinedBranch, remote = DEFAULT_REMOTE) {
+export async function ensurePrsExist(
+    sg: SimpleGit, allBranches: string[], combinedBranch: string,
+    remote: string = DEFAULT_REMOTE) {
   //const allBranches = combinedBranch ? sortedBranches.concat(combinedBranch) : sortedBranches;
   const octoClient = octo.client(readGHKey());
   // TODO: take remote name from `-r` value.

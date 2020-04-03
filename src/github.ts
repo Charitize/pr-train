@@ -58,7 +58,7 @@ interface BranchDetails {
  */
 function constructTrainNavigation(
     branchToPrDict: BranchDetails, currentBranch: string,
-    combinedBranch: string) {
+    combinedBranch: string | undefined) {
   let contents = '<pr-train-toc>\n\n#### PR chain:\n';
   contents = Object.keys(branchToPrDict).reduce((output, branch) => {
     const maybeHandRight = branch === currentBranch ? '👉 ' : '';
@@ -126,7 +126,7 @@ function upsertNavigationInBody(newNavigation: string, body: string): string {
  *               Defaults to origin.
  */
 export async function ensurePrsExist(
-    sg: SimpleGit, allBranches: string[], combinedBranch: string,
+    sg: SimpleGit, allBranches: string[], combinedBranch: string | undefined,
     remote: string = DEFAULT_REMOTE) {
   //const allBranches = combinedBranch ? sortedBranches.concat(combinedBranch) : sortedBranches;
   const octoClient = octo.client(readGHKey());
@@ -170,12 +170,13 @@ export async function ensurePrsExist(
     process.exit(0);
   }
 
-  const nickAndRepo = remoteUrl.match(/github\.com[/:](.*)\.git/)[1];
-  if (!nickAndRepo) {
+  const nickAndRepoMatch = remoteUrl.match(/github\.com[/:](.*)\.git/);
+  if (nickAndRepoMatch === null || !nickAndRepoMatch[1]) {
     console.log(`I could not parse your remote ${remote} repo URL`.red);
     process.exit(4);
   }
 
+  const nickAndRepo = nickAndRepoMatch[1];
   const nick = nickAndRepo.split('/')[0];
   const ghRepo = octoClient.repo(nickAndRepo);
 

@@ -81,9 +81,13 @@ async function pushBranches(
     sg: SimpleGit, branches: string[], forcePush: boolean,
     remote: string = DEFAULT_REMOTE) {
   console.log(`Pushing changes to remote ${remote}...`);
-  // Ugh... `raw` doesn't allow empty strings or `undefined`s, so let's filter any "empty" args.
-  const args = ['push', forcePush ? '--force' : undefined, remote].concat(branches).filter(Boolean);
-  await sg.raw(args);
+  const args = [
+    'push',
+    ...(forcePush ? ['--force'] : []),
+    remote
+  ].concat(branches);
+  // `raw` doesn't allow empty strings, so let's filter any "empty" args.
+  await sg.raw(args.filter(Boolean));
   console.log('All changes pushed ' + emoji.get('white_check_mark'));
 }
 
@@ -196,7 +200,7 @@ function getBranchesInCurrentTrain(branchConfig: BranchConfig[]): string[] {
  * @param branchConfig The branches in a given train.
  * @return The branch at the tip of the configuration for a train.
  */
-function getCombinedBranch(branchConfig: BranchConfig[]): string {
+function getCombinedBranch(branchConfig: BranchConfig[]): string | undefined {
   const combinedBranch = /** @type {Object<string, {combined: boolean}>} */ branchConfig.find(cfg => {
     if (typeof cfg === 'string') {
       return false;
@@ -222,7 +226,7 @@ function getCombinedBranch(branchConfig: BranchConfig[]): string {
  *                       train.
  */
 async function handleSwitchToBranchCommand(
-    sg: SimpleGit, sortedBranches: string[], combinedBranch: string,
+    sg: SimpleGit, sortedBranches: string[], combinedBranch: string | undefined,
     switchToBranchIndex: string | undefined) {
   if (typeof switchToBranchIndex === 'undefined') {
     return;
@@ -246,6 +250,9 @@ async function initializePrTrain(sg: SimpleGit) {
   if (fs.existsSync(await getConfigPath(sg))) {
     console.log('.pr-train.yml already exists');
     process.exit(1);
+  }
+  if (require.main === undefined) {
+    throw new Error('require.main is undefined.')
   }
   const root = path.dirname(require.main.filename);
   const cfgTpl = fs.readFileSync(`${root}/cfg_template.yml`);
@@ -280,7 +287,7 @@ async function findAndPushBranches(
 
 async function printBranchesInTrain(
     sg: SimpleGit, sortedBranches: string[], currentBranch: string,
-    combinedBranch: string, listBranches: boolean) {
+    combinedBranch: string | undefined, listBranches: boolean) {
   console.log(`I've found these partial branches:`);
   const branchesToPrint = sortedBranches.map((b, idx) => {
     const branch = b === currentBranch ? `${b.green.bold}` : b;

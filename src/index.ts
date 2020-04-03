@@ -3,7 +3,6 @@
 import simpleGit = require('simple-git/promise');
 import difference = require('lodash.difference');
 import { createCommand } from 'commander';
-const program = createCommand();
 import emoji = require('node-emoji');
 import fs = require('fs');
 import yaml = require('js-yaml');
@@ -51,7 +50,7 @@ function isBranchAncestor(r1: string, r2: string): boolean {
  */
 async function combineBranches(sg: SimpleGit, rebase: boolean, from: string,
                                to: string) {
-  if (program.rebase) {
+  if (rebase) {
     process.stdout.write(`rebasing ${to} onto branch ${from}... `);
   } else {
     process.stdout.write(`merging ${from} into branch ${to}... `);
@@ -223,8 +222,8 @@ function getCombinedBranch(branchConfig: BranchConfig[]): string {
  *                       train.
  */
 async function handleSwitchToBranchCommand(
-    sg: SimpleGit, sortedBranches: string[], combinedBranch: string) {
-  const switchToBranchIndex = program.args[0];
+    sg: SimpleGit, sortedBranches: string[], combinedBranch: string,
+    switchToBranchIndex: string | undefined) {
   if (typeof switchToBranchIndex === 'undefined') {
     return;
   }
@@ -244,6 +243,7 @@ async function handleSwitchToBranchCommand(
 }
 
 async function main() {
+  const program = createCommand();
   program
     .version(packageFile.version)
     .option('--init', 'Creates a .pr-train.yml file with an example configuration')
@@ -326,7 +326,8 @@ async function main() {
     await sg.raw(['branch', combinedTrainBranch, lastBranchBeforeCombined]);
   }
 
-  await handleSwitchToBranchCommand(sg, sortedTrainBranches, combinedTrainBranch);
+  await handleSwitchToBranchCommand(
+      sg, sortedTrainBranches, combinedTrainBranch, program.args[0]);
 
   console.log(`I've found these partial branches:`);
   const branchesToPrint = sortedTrainBranches.map((b, idx) => {

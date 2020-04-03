@@ -242,6 +242,18 @@ async function handleSwitchToBranchCommand(
   process.exit(0);
 }
 
+async function initializePrTrain(sg: SimpleGit) {
+  if (fs.existsSync(await getConfigPath(sg))) {
+    console.log('.pr-train.yml already exists');
+    process.exit(1);
+  }
+  const root = path.dirname(require.main.filename);
+  const cfgTpl = fs.readFileSync(`${root}/cfg_template.yml`);
+  fs.writeFileSync(await getConfigPath(sg), cfgTpl);
+  console.log(`Created a ".pr-train.yml" file. Please make sure it's gitignored.`);
+  return;
+}
+
 /**
  * Looks for the branches in the current train not yet merged into master and
  * pushes them.
@@ -341,15 +353,7 @@ async function main() {
   }
 
   if (program.init) {
-    if (fs.existsSync(await getConfigPath(sg))) {
-      console.log('.pr-train.yml already exists');
-      process.exit(1);
-    }
-    const root = path.dirname(require.main.filename);
-    const cfgTpl = fs.readFileSync(`${root}/cfg_template.yml`);
-    fs.writeFileSync(await getConfigPath(sg), cfgTpl);
-    console.log(`Created a ".pr-train.yml" file. Please make sure it's gitignored.`);
-    process.exit(0);
+    return initializePrTrain(sg);
   }
 
   let ymlConfig;

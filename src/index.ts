@@ -266,6 +266,35 @@ async function findAndPushBranches(
   pushBranches(sg, branchesToPush, force, remote);
 }
 
+async function printBranchesInTrain(
+    sg: SimpleGit, sortedBranches: string[], currentBranch: string,
+    combinedBranch: string, listBranches: boolean) {
+  console.log(`I've found these partial branches:`);
+  const branchesToPrint = sortedBranches.map((b, idx) => {
+    const branch = b === currentBranch ? `${b.green.bold}` : b;
+    const suffix = b === combinedBranch ? ' (combined)' : '';
+    return `[${idx}] ${branch}${suffix}`;
+  });
+
+  if (listBranches) {
+    const answer = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'branch',
+        message: 'Select a branch to checkout',
+        choices: branchesToPrint.map((b, i) => ({ name: b, value: sortedBranches[i] })),
+        pageSize: 20,
+      },
+    ]);
+    console.log(`checking out branch ${answer.branch}`);
+    await sg.checkout(answer.branch);
+    return;
+  }
+
+  console.log(branchesToPrint.map(b => ` -> ${b}`).join('\n'), '\n');
+
+}
+
 async function main() {
   const program = createCommand();
   program
@@ -353,29 +382,11 @@ async function main() {
   await handleSwitchToBranchCommand(
       sg, sortedTrainBranches, combinedTrainBranch, program.args[0]);
 
-  console.log(`I've found these partial branches:`);
-  const branchesToPrint = sortedTrainBranches.map((b, idx) => {
-    const branch = b === currentBranch ? `${b.green.bold}` : b;
-    const suffix = b === combinedTrainBranch ? ' (combined)' : '';
-    return `[${idx}] ${branch}${suffix}`;
-  });
-
+  await printBranchesInTrain(sg, sortedTrainBranches, currentBranch,
+                             combinedTrainBranch, program.list);
   if (program.list) {
-    const answer = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'branch',
-        message: 'Select a branch to checkout',
-        choices: branchesToPrint.map((b, i) => ({ name: b, value: sortedTrainBranches[i] })),
-        pageSize: 20,
-      },
-    ]);
-    console.log(`checking out branch ${answer.branch}`);
-    await sg.checkout(answer.branch);
     return;
   }
-
-  console.log(branchesToPrint.map(b => ` -> ${b}`).join('\n'), '\n');
 
   // If we're creating PRs, don't combine branches (that might change branch HEADs and consequently
   // the PR titles and descriptions). Just push and create the PRs.
@@ -398,7 +409,8 @@ async function main() {
   }
 
   if (program.push || program.pushMerged) {
-    await findAndPushBranches();
+    await findAndPushBranches(sg, sortedTrainBranches, program.pushMerged,
+                              program.force, program.remote);
   }
 
   await sg.checkout(currentBranch);

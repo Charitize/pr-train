@@ -242,6 +242,30 @@ async function handleSwitchToBranchCommand(
   process.exit(0);
 }
 
+/**
+ * Looks for the branches in the current train not yet merged into master and
+ * pushes them.
+ *
+ * @param sg SimpleGit client to interact with local git repository.
+ * @param sortedBranches The branches in the current PR train.
+ * @param pushMerged If true, pushes branches even if merged into master.
+ * @param force If the branch history differs from origin, force pushes.
+ * @param remote The git remote to push to.
+ */
+async function findAndPushBranches(
+    sg: SimpleGit, sortedBranches: string[],
+    pushMerged: boolean, force: boolean, remote: string) {
+  let branchesToPush = sortedBranches;
+  if (!pushMerged) {
+    branchesToPush = await getUnmergedBranches(sg, sortedBranches);
+    const branchDiff = difference(sortedBranches, branchesToPush);
+    if (branchDiff.length > 0) {
+      console.log(`Not pushing already merged branches: ${branchDiff.join(', ')}`);
+    }
+  }
+  pushBranches(sg, branchesToPush, force, remote);
+}
+
 async function main() {
   const program = createCommand();
   program
@@ -353,22 +377,11 @@ async function main() {
 
   console.log(branchesToPrint.map(b => ` -> ${b}`).join('\n'), '\n');
 
-  async function findAndPushBranches() {
-    let branchesToPush = sortedTrainBranches;
-    if (!program.pushMerged) {
-      branchesToPush = await getUnmergedBranches(sg, sortedTrainBranches);
-      const branchDiff = difference(sortedTrainBranches, branchesToPush);
-      if (branchDiff.length > 0) {
-        console.log(`Not pushing already merged branches: ${branchDiff.join(', ')}`);
-      }
-    }
-    pushBranches(sg, branchesToPush, program.force, program.remote);
-  }
-
   // If we're creating PRs, don't combine branches (that might change branch HEADs and consequently
   // the PR titles and descriptions). Just push and create the PRs.
   if (program.createPrs) {
-    await findAndPushBranches();
+    await findAndPushBranches(sg, sortedTrainBranches, program.pushMerged,
+                              program.force, program.remote);
     await ensurePrsExist(sg, sortedTrainBranches, combinedTrainBranch, program.remote);
     return;
   }

@@ -15,27 +15,42 @@ import path = require('path');
 import packageFile = require('../package.json');
 import inquirer = require('inquirer');
 import shelljs = require('shelljs');
-
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+import { SimpleGit } from "simple-git/promise";
 
 /**
- * Returns `true` is ref `b1` is an ancestor of ref `b2`.
+ * Creates a promise to block the process for the provided time.
  *
- * @param {string} r1
- * @param {string} r2
+ * @param ms Number of milliseconds to sleep for.
  */
-function isBranchAncestor(r1, r2) {
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Returns `true` is ref `r1` is an ancestor of ref `r2`.
+ *
+ * @param r1 Git ref to check if is a parent/ancestor of r2.
+ * @param r2 Git ref to check if is a child of r1.
+ */
+function isBranchAncestor(r1: string, r2: string): boolean {
   return shelljs.exec(`git merge-base --is-ancestor ${r1} ${r2}`).code === 0;
 }
 
 /**
+ * Incorporates the changes in `from` branch into the `to` branch.
  *
- * @param {simpleGit.SimpleGit} sg
- * @param {boolean} rebase
- * @param {string} from
- * @param {string} to
+ * If rebase is specified, `to` is rebased on top of `from`. Otherwise, a merge
+ * commit from the `from` branch is merged into the `to` branch.
+ *
+ * @param sg SimpleGit client to manage local git operations.
+ * @param rebase Requests branch incorporation by rebase, otherwise by merge.
+ * @param from The branch to incorporate changes from, by rebased onto or merging
+ *             from.
+ * @param to The branch to incorporate the changes into, by rebasing onto the
+ *           from branch or merging into from the from branch.
  */
-async function combineBranches(sg, rebase, from, to) {
+async function combineBranches(sg: SimpleGit, rebase: boolean, from: string,
+                               to: string) {
   if (program.rebase) {
     process.stdout.write(`rebasing ${to} onto branch ${from}... `);
   } else {
@@ -54,7 +69,18 @@ async function combineBranches(sg, rebase, from, to) {
   console.log(emoji.get('white_check_mark'));
 }
 
-async function pushBranches(sg, branches, forcePush, remote = DEFAULT_REMOTE) {
+/**
+ * Pushes all git branches to remotes.
+ *
+ * @param sg SimpleGit to perform local git operations with.
+ * @param branches The list of branches to push.
+ * @param forcePush If the branch should be force pushed if it conflicts with
+ *                  the remote.
+ * @param remote The remote to push to. Defaults to origin.
+ */
+async function pushBranches(
+    sg: SimpleGit, branches: string[], forcePush: boolean,
+    remote: string = DEFAULT_REMOTE) {
   console.log(`Pushing changes to remote ${remote}...`);
   // Ugh... `raw` doesn't allow empty strings or `undefined`s, so let's filter any "empty" args.
   const args = ['push', forcePush ? '--force' : undefined, remote].concat(branches).filter(Boolean);
@@ -62,7 +88,15 @@ async function pushBranches(sg, branches, forcePush, remote = DEFAULT_REMOTE) {
   console.log('All changes pushed ' + emoji.get('white_check_mark'));
 }
 
-async function getUnmergedBranches(sg, branches) {
+/**
+ * Gets the branches not merged into master.
+ *
+ * @param sg SimpleGit client to perform local git operations with.
+ * @param branches The branches to check.
+ * @return All branches not yet merged into master.
+ */
+async function getUnmergedBranches(
+    sg: SimpleGit, branches: string[]): Promise<string[]> {
   const mergedBranchesOutput = await sg.raw(['branch', '--merged', 'master']);
   const mergedBranches = mergedBranchesOutput
     .split('\n')
@@ -71,7 +105,12 @@ async function getUnmergedBranches(sg, branches) {
   return difference(branches, mergedBranches);
 }
 
-async function getConfigPath(sg) {
+/**
+ * Gets the path of .pr-train.yml at the root of the repository.
+ *
+ * @param sg SimpleGit client to perform local git operations with.
+ */
+async function getConfigPath(sg): Promise<string> {
   const repoRootPath = (await sg.raw(['rev-parse', '--show-toplevel'])).trim();
   return `${repoRootPath}/.pr-train.yml`;
 }
@@ -81,26 +120,54 @@ async function getConfigPath(sg) {
  * @typedef {Object.<string, Array.<string | BranchCfg>>} TrainCfg
  */
 
+interface BranchConfig {
+  [branchName: string]: {
+    combined: boolean,
+    initSha?: string,
+  }
+}
+
+interface TrainConfig {
+  [branchName: string]: (string | BranchConfig)[];
+}
+
+interface PRTrainConfig {
+  trains: TrainConfig[];
+}
+
+
 /**
- * @param {simpleGit.SimpleGit} sg
- * @return {Promise.<{trains: Array.<TrainCfg>}>}
+ * Gets the pr-train configuration from the .pr-train.yml file at the repository
+ * root.
+ *
+ * @param sg SimpleGit client to get the configuration based on.
+ * @return The PR Train configuration.
  */
-async function loadConfig(sg) {
+async function loadConfig(sg): Promise<PRTrainConfig> {
   const path = await getConfigPath(sg);
   return yaml.safeLoad(fs.readFileSync(path, 'utf8'));
 }
 
 /**
- * @param {BranchCfg} branchCfg
+ * Gets the name of the branch configs tip branch name or otherwise if the
+ * argument is a string, returns the branch.
+ *
+ * @param branchCfg The configuration of a branch or the branch name if provided
+ *                  directly.
  */
-function getBranchName(branchCfg) {
+function getBranchName(branchCfg: BranchConfig | string): string {
   return typeof branchCfg === 'string' ? branchCfg : Object.keys(branchCfg)[0];
 }
 
 /**
- * @return {Promise.<Array.<BranchCfg>>}
+ * Gets the PR train branch configs for the branch currently checked out.
+ *
+ * @param sg SimpleGit client to look at the current branches.
+ * @param config The entire PR train config for all PR trains.
+ * @return The branch configurations for the currently checked out PR train.
  */
-async function getBranchesConfigInCurrentTrain(sg, config) {
+async function getBranchesConfigInCurrentTrain(
+    sg: SimpleGit, config: PRTrainConfig): Promise<BranchConfig[] | null> {
   const branches = await sg.branchLocal();
   const currentBranch = branches.current;
   const { trains } = config;
@@ -116,16 +183,21 @@ async function getBranchesConfigInCurrentTrain(sg, config) {
 }
 
 /**
- * @param {Array.<BranchCfg>} branchConfig
+ * Maps branch names for the provided branch configs.
+ *
+ * @param branchConfig The branch configs to get the names for.
  */
-function getBranchesInCurrentTrain(branchConfig) {
+function getBranchesInCurrentTrain(branchConfig: BranchConfig[]): string[] {
   return branchConfig.map(b => getBranchName(b));
 }
 
 /**
- * @param {Array.<BranchCfg>} branchConfig
+ * For a series of branch configs in a train, finds the name of the tip branch.
+ *
+ * @param branchConfig The branches in a given train.
+ * @return The branch at the tip of the configuration for a train.
  */
-function getCombinedBranch(branchConfig) {
+function getCombinedBranch(branchConfig: BranchConfig[]): string {
   const combinedBranch = /** @type {Object<string, {combined: boolean}>} */ branchConfig.find(cfg => {
     if (typeof cfg === 'string') {
       return false;
@@ -140,7 +212,18 @@ function getCombinedBranch(branchConfig) {
   return branchName;
 }
 
-async function handleSwitchToBranchCommand(sg, sortedBranches, combinedBranch) {
+/**
+ * Switches the branch to the branch named as the first program argument.
+ *
+ * "combined" is handled specially to switch to the tip branch.
+ *
+ * @param sg SimpleGit client to checkout the requested branch.
+ * @param sortedBranches The branches in the current PR train.
+ * @param combinedBranch The name of the combined branch at the tip of the PR
+ *                       train.
+ */
+async function handleSwitchToBranchCommand(
+    sg: SimpleGit, sortedBranches: string[], combinedBranch: string) {
   const switchToBranchIndex = program.args[0];
   if (typeof switchToBranchIndex === 'undefined') {
     return;

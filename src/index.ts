@@ -14,8 +14,9 @@ import path = require('path');
 import packageFile = require('../package.json');
 import inquirer = require('inquirer');
 import { SimpleGit } from "simple-git/promise";
-import {combineBranches, getUnmergedBranches, isBranchAncestor, pushBranches} from "./git";
+import { GitClient } from "./git";
 import { sleep } from "./sleep";
+import { exec as shellJsExec } from 'shelljs';
 
 /**
  * Gets the path of .pr-train.yml at the root of the repository.
@@ -174,24 +175,24 @@ async function initializePrTrain(sg: SimpleGit) {
  * Looks for the branches in the current train not yet merged into master and
  * pushes them.
  *
- * @param sg SimpleGit client to interact with local git repository.
+ * @param git Git client to interact with local git repository.
  * @param sortedBranches The branches in the current PR train.
  * @param pushMerged If true, pushes branches even if merged into master.
  * @param force If the branch history differs from origin, force pushes.
  * @param remote The git remote to push to.
  */
 async function findAndPushBranches(
-    sg: SimpleGit, sortedBranches: string[],
+    git: GitClient, sortedBranches: string[],
     pushMerged: boolean, force: boolean, remote: string) {
   let branchesToPush = sortedBranches;
   if (!pushMerged) {
-    branchesToPush = await getUnmergedBranches(sg, sortedBranches);
+    branchesToPush = await git.getUnmergedBranches(sortedBranches);
     const branchDiff = difference(sortedBranches, branchesToPush);
     if (branchDiff.length > 0) {
       console.log(`Not pushing already merged branches: ${branchDiff.join(', ')}`);
     }
   }
-  pushBranches(sg, branchesToPush, force, remote);
+  git.pushBranches(branchesToPush, force, remote);
 }
 
 async function printBranchesInTrain(
@@ -221,6 +222,15 @@ async function printBranchesInTrain(
 
   console.log(branchesToPrint.map(b => ` -> ${b}`).join('\n'), '\n');
 
+}
+
+async function initGit(): Promise<[SimpleGit, GitClient]> {
+  const sg = simpleGit();
+  if (!(await sg.checkIsRepo())) {
+    console.log('Not a git repo'.red);
+    process.exit(1);
+  }
+  return [sg, new GitClient(sg, shellJsExec)];
 }
 
 async function main() {
@@ -262,11 +272,7 @@ async function main() {
 
   program.createPrs && checkGHKeyExists();
 
-  const sg = simpleGit();
-  if (!(await sg.checkIsRepo())) {
-    console.log('Not a git repo'.red);
-    process.exit(1);
-  }
+  const [sg, git] = await initGit();
 
   if (program.init) {
     return initializePrTrain(sg);
@@ -311,7 +317,7 @@ async function main() {
   // If we're creating PRs, don't combine branches (that might change branch HEADs and consequently
   // the PR titles and descriptions). Just push and create the PRs.
   if (program.createPrs) {
-    await findAndPushBranches(sg, sortedTrainBranches, program.pushMerged,
+    await findAndPushBranches(git, sortedTrainBranches, program.pushMerged,
                               program.force, program.remote);
     await ensurePrsExist(sg, sortedTrainBranches, combinedTrainBranch, program.remote);
     return;
@@ -320,16 +326,16 @@ async function main() {
   for (let i = 0; i < sortedTrainBranches.length - 1; ++i) {
     const b1 = sortedTrainBranches[i];
     const b2 = sortedTrainBranches[i + 1];
-    if (isBranchAncestor(b1, b2)) {
+    if (git.isBranchAncestor(b1, b2)) {
       console.log(`Branch ${b1} is an ancestor of ${b2} => nothing to do`);
       continue;
     }
-    await combineBranches(sg, program.rebase, b1, b2);
+    await git.combineBranches(program.rebase, b1, b2);
     await sleep(MERGE_STEP_DELAY_MS);
   }
 
   if (program.push || program.pushMerged) {
-    await findAndPushBranches(sg, sortedTrainBranches, program.pushMerged,
+    await findAndPushBranches(git, sortedTrainBranches, program.pushMerged,
                               program.force, program.remote);
   }
 

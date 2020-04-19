@@ -1,7 +1,6 @@
 // @ts-check
 import octo = require('octonode');
 import promptly = require('promptly');
-import { DEFAULT_REMOTE } from './consts';
 import fs = require('fs');
 import colors = require('colors');
 import emoji = require('node-emoji');
@@ -123,11 +122,10 @@ function upsertNavigationInBody(newNavigation: string, body: string): string {
  * @param combinedBranch The final branch with the combined changes at the tip
  *                       of the PR train.
  * @param remote The name of the remote to use for checking PRs against.
- *               Defaults to origin.
  */
 export async function ensurePrsExist(
     sg: SimpleGit, allBranches: string[], combinedBranch: string | undefined,
-    remote: string = DEFAULT_REMOTE) {
+    remote: string) {
   //const allBranches = combinedBranch ? sortedBranches.concat(combinedBranch) : sortedBranches;
   const octoClient = octo.client(readGHKey());
   // TODO: take remote name from `-r` value.

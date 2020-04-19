@@ -8,7 +8,7 @@ import fs = require('fs');
 import yaml = require('js-yaml');
 import { ensurePrsExist, checkGHKeyExists } from './github';
 import colors = require('colors');
-import { MERGE_STEP_DELAY_MS } from './consts';
+import {DEFAULT_REMOTE, MERGE_STEP_DELAY_MS} from './consts';
 import path = require('path');
 // @ts-ignore
 import packageFile = require('../package.json');
@@ -244,6 +244,7 @@ async function main() {
     .option('-f, --force', 'Force push to remote')
     .option('--push-merged', 'Push all branches (inclusing those that have already been merged into master)')
     .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"')
+    .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
     .option('-c, --create-prs', 'Create GitHub PRs from your train branches');
 
   program.on('--help', () => {

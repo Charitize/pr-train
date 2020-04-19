@@ -81,14 +81,16 @@ export class GitClient {
   }
 
   /**
-   * Gets the branches not merged into master.
+   * Gets the branches not merged into stableBranch.
    *
    * @param branches The branches to check.
-   * @return All branches not yet merged into master.
+   * @param stableBranch The branch to check if branches have been merged into.
+   * @return All branches not yet merged into stableBranch.
    */
-  public async getUnmergedBranches(branches: string[]): Promise<string[]> {
+  public async getUnmergedBranches(
+      branches: string[], stableBranch: string): Promise<string[]> {
     const mergedBranchesOutput =
-        await this.sg.raw(['branch', '--merged', 'master']);
+        await this.sg.raw(['branch', '--merged', stableBranch]);
     const mergedBranches = mergedBranchesOutput
       .split('\n')
       .map(b => b.trim())

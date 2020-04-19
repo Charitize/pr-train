@@ -122,10 +122,12 @@ function upsertNavigationInBody(newNavigation: string, body: string): string {
  * @param combinedBranch The final branch with the combined changes at the tip
  *                       of the PR train.
  * @param remote The name of the remote to use for checking PRs against.
+ * @param stableBranch The base stable branch to base all PRs off of. Often
+ *                     master, but might be develop.
  */
 export async function ensurePrsExist(
     sg: SimpleGit, allBranches: string[], combinedBranch: string | undefined,
-    remote: string) {
+    remote: string, stableBranch: string) {
   //const allBranches = combinedBranch ? sortedBranches.concat(combinedBranch) : sortedBranches;
   const octoClient = octo.client(readGHKey());
   // TODO: take remote name from `-r` value.
@@ -190,7 +192,7 @@ export async function ensurePrsExist(
       title,
       body
     } = branch === combinedBranch ? getCombinedBranchPrMsg() : await constructPrMsg(sg, branch);
-    const base = index === 0 || branch === combinedBranch ? 'master' : allBranches[index - 1];
+    const base = index === 0 || branch === combinedBranch ? stableBranch : allBranches[index - 1];
     process.stdout.write(`Checking if PR for branch ${branch} already exists... `);
     const prs = await ghRepo.prsAsync({
       head: `${nick}:${branch}`,

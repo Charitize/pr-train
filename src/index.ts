@@ -172,21 +172,24 @@ async function initializePrTrain(sg: SimpleGit) {
 }
 
 /**
- * Looks for the branches in the current train not yet merged into master and
- * pushes them.
+ * Looks for the branches in the current train not yet merged into
+ * `stableBranch` and pushes them.
  *
  * @param git Git client to interact with local git repository.
  * @param sortedBranches The branches in the current PR train.
- * @param pushMerged If true, pushes branches even if merged into master.
+ * @param pushMerged If true, pushes branches even if merged into
+ *                   `stableBranch`.
  * @param force If the branch history differs from origin, force pushes.
  * @param remote The git remote to push to.
+ * @param stableBranch The stable branch to merge into. Often master, but in
+ *                     many cases is develop or other branches to base off of.
  */
 async function findAndPushBranches(
     git: GitClient, sortedBranches: string[],
-    pushMerged: boolean, force: boolean, remote: string) {
+    pushMerged: boolean, force: boolean, remote: string, stableBranch: string) {
   let branchesToPush = sortedBranches;
   if (!pushMerged) {
-    branchesToPush = await git.getUnmergedBranches(sortedBranches);
+    branchesToPush = await git.getUnmergedBranches(sortedBranches, stableBranch);
     const branchDiff = difference(sortedBranches, branchesToPush);
     if (branchDiff.length > 0) {
       console.log(`Not pushing already merged branches: ${branchDiff.join(', ')}`);
@@ -242,8 +245,8 @@ async function main() {
     .option('-l, --list', 'List branches in current train')
     .option('-r, --rebase', 'Rebase branches rather than merging them')
     .option('-f, --force', 'Force push to remote')
-    .option('--push-merged', 'Push all branches (inclusing those that have already been merged into master)')
-    .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"')
+    .option('--push-merged', 'Push all branches (inclusing those that have already been merged into stable-branch)')
+    .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to master.', 'master')
     .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
     .option('-c, --create-prs', 'Create GitHub PRs from your train branches');
 
@@ -319,8 +322,9 @@ async function main() {
   // the PR titles and descriptions). Just push and create the PRs.
   if (program.createPrs) {
     await findAndPushBranches(git, sortedTrainBranches, program.pushMerged,
-                              program.force, program.remote);
-    await ensurePrsExist(sg, sortedTrainBranches, combinedTrainBranch, program.remote);
+                              program.force, program.remote, program.stableBranch);
+    await ensurePrsExist(sg, sortedTrainBranches, combinedTrainBranch,
+                         program.remote, program.stableBranch);
     return;
   }
 
@@ -337,7 +341,7 @@ async function main() {
 
   if (program.push || program.pushMerged) {
     await findAndPushBranches(git, sortedTrainBranches, program.pushMerged,
-                              program.force, program.remote);
+                              program.force, program.remote, program.stableBranch);
   }
 
   await sg.checkout(currentBranch);

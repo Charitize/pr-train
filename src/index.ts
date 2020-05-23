@@ -216,15 +216,16 @@ class PRTrainClient {
     console.log(branchesToPrint.map(b => ` -> ${b}`).join('\n'), '\n');
   }
 
+  public currentIndex(): number {
+    return this.sortedTrainBranches.indexOf(this.currentBranch);
+  }
+
   /**
    * Switches the branch to the branch named as the first program argument.
    *
    * "combined" is handled specially to switch to the tip branch.
    */
-  public async switchToBranch(switchToBranchIndex: string) {
-    if (typeof switchToBranchIndex === 'undefined') {
-      return;
-    }
+  public async switchToBranch(switchToBranchIndex: number | 'combined') {
     let targetBranch;
     if (switchToBranchIndex === 'combined') {
       targetBranch = this.combinedTrainBranch;
@@ -348,13 +349,31 @@ async function main() {
   program
       .command('checkout [index]')
       .description('Switches to the branch indexed. Prompts user to select branch if no index is provided.')
-      .action(async (index?: string) => {
+      .action(async (index?: number) => {
         const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
         if (index === undefined) {
           await prTrainClient.selectBranchInTrain();
         } else {
           await prTrainClient.switchToBranch(index);
         }
+      });
+
+  program
+      .command('previous')
+      .description('Switches to the previous branch in the train.')
+      .action(async () => {
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const index = prTrainClient.currentIndex();
+        await prTrainClient.switchToBranch(index - 1);
+      });
+
+  program
+      .command('next')
+      .description('Switches to the next branch in the train.')
+      .action(async () => {
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const index = prTrainClient.currentIndex();
+        await prTrainClient.switchToBranch(index + 1);
       });
 
   program

@@ -228,9 +228,10 @@ export async function ensurePrsExist(
     return memo;
   }, Promise.resolve({}));
 
-  // Now that we have all the PRs, let's update them with the "navigation" section.
+  // Now that we have all the PRs, let's update them with the "navigation"
+  // section and any changes to their diffbase.
   // Note: We're running this serially to have nicer logs.
-  await allBranches.reduce(async (memo, branch) => {
+  await allBranches.reduce(async (memo, branch, index) => {
     await memo;
     const prInfo = prDict[branch];
     const ghPr = octoClient.pr(nickAndRepo, prInfo.pr);
@@ -243,11 +244,14 @@ export async function ensurePrsExist(
       branch === combinedBranch ?
       getCombinedBranchPrMsg() :
       await constructPrMsg(sg, branch);
+    const base = index === 0 || branch === combinedBranch ? stableBranch : allBranches[index - 1];
     const navigation = constructTrainNavigation(prDict, branch, combinedBranch);
+
     const newBody = upsertNavigationInBody(navigation, body);
     process.stdout.write(`Updating PR for branch ${branch}...`);
     await ghPr.updateAsync({
       title,
+      base,
       body: `${newBody}`,
     });
     console.log(emoji.get('white_check_mark'));

@@ -7,7 +7,6 @@ import emoji = require('node-emoji');
 import fs = require('fs');
 import yaml = require('js-yaml');
 import { ensurePrsExist, checkGHKeyExists } from './github';
-import colors = require('colors');
 import {DEFAULT_REMOTE, MERGE_STEP_DELAY_MS} from './consts';
 import path = require('path');
 // @ts-ignore
@@ -59,6 +58,22 @@ interface PRTrainConfig {
 async function loadConfig(sg): Promise<PRTrainConfig> {
   const path = await getConfigPath(sg);
   return yaml.safeLoad(fs.readFileSync(path, 'utf8'));
+}
+
+async function loadConfigOrExit(sg): Promise<PRTrainConfig> {
+  let ymlConfig;
+  try {
+    ymlConfig = await loadConfig(sg);
+  } catch (e) {
+    if (e instanceof yaml.YAMLException) {
+      console.log('There seems to be an error in `.pr-train.yml`.');
+      console.log(e.message);
+      process.exit(1);
+    }
+    console.log('`.pr-train.yml` file not found. Please run `git pr-train --init` to create one.'.red);
+    process.exit(1);
+  }
+  return ymlConfig;
 }
 
 /**
@@ -125,37 +140,19 @@ function getCombinedBranch(branchConfig: BranchConfig[]): string | undefined {
   return branchName;
 }
 
-/**
- * Switches the branch to the branch named as the first program argument.
- *
- * "combined" is handled specially to switch to the tip branch.
- *
- * @param sg SimpleGit client to checkout the requested branch.
- * @param sortedBranches The branches in the current PR train.
- * @param combinedBranch The name of the combined branch at the tip of the PR
- *                       train.
- */
-async function handleSwitchToBranchCommand(
-    sg: SimpleGit, sortedBranches: string[], combinedBranch: string | undefined,
-    switchToBranchIndex: string | undefined) {
-  if (typeof switchToBranchIndex === 'undefined') {
-    return;
+async function initGit(): Promise<[SimpleGit, GitClient]> {
+  const sg = simpleGit();
+  if (!(await sg.checkIsRepo())) {
+    console.log('Not a git repo'.red);
+    process.exit(1);
   }
-  let targetBranch;
-  if (switchToBranchIndex === 'combined') {
-    targetBranch = combinedBranch;
-  } else {
-    targetBranch = sortedBranches[switchToBranchIndex];
-  }
-  if (!targetBranch) {
-    console.log(`Could not find branch with index ${switchToBranchIndex}`.red);
-    process.exit(3);
-  }
-  await sg.checkout(targetBranch);
-  console.log(`Switched to branch ${targetBranch}`);
-  process.exit(0);
+  return [sg, new GitClient(sg, shellJsExec)];
 }
 
+
+/**
+ * Creates a PR train yml file if it does not exist already.
+ */
 async function initializePrTrain(sg: SimpleGit) {
   if (fs.existsSync(await getConfigPath(sg))) {
     console.log('.pr-train.yml already exists');
@@ -172,179 +169,251 @@ async function initializePrTrain(sg: SimpleGit) {
 }
 
 /**
- * Looks for the branches in the current train not yet merged into
- * `stableBranch` and pushes them.
- *
- * @param git Git client to interact with local git repository.
- * @param sortedBranches The branches in the current PR train.
- * @param pushMerged If true, pushes branches even if merged into
- *                   `stableBranch`.
- * @param force If the branch history differs from origin, force pushes.
- * @param remote The git remote to push to.
- * @param stableBranch The stable branch to merge into. Often master, but in
- *                     many cases is develop or other branches to base off of.
+ * A client for performing train operations on a sequence of PRs.
  */
-async function findAndPushBranches(
-    git: GitClient, sortedBranches: string[],
-    pushMerged: boolean, force: boolean, remote: string, stableBranch: string) {
-  let branchesToPush = sortedBranches;
-  if (!pushMerged) {
-    branchesToPush = await git.getUnmergedBranches(sortedBranches, stableBranch);
-    const branchDiff = difference(sortedBranches, branchesToPush);
-    if (branchDiff.length > 0) {
-      console.log(`Not pushing already merged branches: ${branchDiff.join(', ')}`);
-    }
+class PRTrainClient {
+  constructor(private sg: SimpleGit, private git: GitClient,
+              private sortedTrainBranches: string[], private currentBranch: string,
+              private combinedTrainBranch: string | undefined) {
   }
-  git.pushBranches(branchesToPush, force, remote);
-}
 
-async function printBranchesInTrain(
-    sg: SimpleGit, sortedBranches: string[], currentBranch: string,
-    combinedBranch: string | undefined, listBranches: boolean) {
-  console.log(`I've found these partial branches:`);
-  const branchesToPrint = sortedBranches.map((b, idx) => {
-    const branch = b === currentBranch ? `${b.green.bold}` : b;
-    const suffix = b === combinedBranch ? ' (combined)' : '';
-    return `[${idx}] ${branch}${suffix}`;
-  });
+  /**
+   * Loads the PR train config and creates the client.
+   *
+   * This asynchronously creates the required dependencies for PRTrainClient.
+   */
+  public static async create(sg: SimpleGit, git: GitClient) {
+    const ymlConfig = await loadConfigOrExit(sg);
 
-  if (listBranches) {
+    const { current: currentBranch, all: allBranches } = await sg.branchLocal();
+    const trainCfg = await getBranchesConfigInCurrentTrain(sg, ymlConfig);
+    if (!trainCfg) {
+      console.log(`Current branch ${currentBranch} is not a train branch.`);
+      process.exit(1);
+    }
+    const sortedTrainBranches = getBranchesInCurrentTrain(trainCfg);
+    const combinedTrainBranch = getCombinedBranch(trainCfg);
+
+    if (combinedTrainBranch && !allBranches.includes(combinedTrainBranch)) {
+      const lastBranchBeforeCombined = sortedTrainBranches[sortedTrainBranches.length - 2];
+      await sg.raw(['branch', combinedTrainBranch, lastBranchBeforeCombined]);
+    }
+
+    return new PRTrainClient(sg, git, sortedTrainBranches, currentBranch, combinedTrainBranch);
+  }
+
+  /**
+   * Prints a list of the branches found in the PR train.
+   */
+  public async printBranchesInTrain() {
+    console.log(`I've found these partial branches:`);
+    const branchesToPrint = this.sortedTrainBranches.map((b, idx) => {
+      const branch = b === this.currentBranch ? `${b.green.bold}` : b;
+      const suffix = b === this.combinedTrainBranch ? ' (combined)' : '';
+      return `[${idx}] ${branch}${suffix}`;
+    });
+
+    console.log(branchesToPrint.map(b => ` -> ${b}`).join('\n'), '\n');
+  }
+
+  /**
+   * Switches the branch to the branch named as the first program argument.
+   *
+   * "combined" is handled specially to switch to the tip branch.
+   */
+  public async switchToBranch(switchToBranchIndex: string) {
+    if (typeof switchToBranchIndex === 'undefined') {
+      return;
+    }
+    let targetBranch;
+    if (switchToBranchIndex === 'combined') {
+      targetBranch = this.combinedTrainBranch;
+    } else {
+      targetBranch = this.sortedTrainBranches[switchToBranchIndex];
+    }
+    if (!targetBranch) {
+      console.log(`Could not find branch with index ${switchToBranchIndex}`.red);
+      process.exit(3);
+    }
+    await this.sg.checkout(targetBranch);
+    console.log(`Switched to branch ${targetBranch}`);
+    process.exit(0);
+  }
+
+  /**
+   * Prompts the user with a list of branches they can checkout and checks out
+   * the branch out.
+   */
+  public async selectBranchInTrain() {
+    console.log(`I've found these partial branches:`);
+    const branchesToPrint = this.sortedTrainBranches.map((b, idx) => {
+      const branch = b === this.currentBranch ? `${b.green.bold}` : b;
+      const suffix = b === this.combinedTrainBranch ? ' (combined)' : '';
+      return `[${idx}] ${branch}${suffix}`;
+    });
+
     const answer = await inquirer.prompt([
       {
         type: 'list',
         name: 'branch',
         message: 'Select a branch to checkout',
-        choices: branchesToPrint.map((b, i) => ({ name: b, value: sortedBranches[i] })),
+        choices: branchesToPrint.map((b, i) => ({ name: b, value: this.sortedTrainBranches[i] })),
         pageSize: 20,
       },
     ]);
     console.log(`checking out branch ${answer.branch}`);
-    await sg.checkout(answer.branch);
-    return;
+    await this.sg.checkout(answer.branch);
   }
 
-  console.log(branchesToPrint.map(b => ` -> ${b}`).join('\n'), '\n');
-
-}
-
-async function initGit(): Promise<[SimpleGit, GitClient]> {
-  const sg = simpleGit();
-  if (!(await sg.checkIsRepo())) {
-    console.log('Not a git repo'.red);
-    process.exit(1);
+  /**
+   * Looks for the branches in the current train not yet merged into
+   * `stableBranch` and pushes them.
+   *
+   * @param pushMerged If true, pushes branches even if merged into
+   *                   `stableBranch`.
+   * @param force If the branch history differs from origin, force pushes.
+   * @param remote The git remote to push to.
+   * @param stableBranch The stable branch to merge into. Often master, but in
+   *                     many cases is develop or other branches to base off of.
+   */
+  public async findAndPushBranches(
+      pushMerged: boolean, force: boolean, remote: string, stableBranch: string) {
+    let branchesToPush = this.sortedTrainBranches;
+    if (!pushMerged) {
+      branchesToPush = await this.git.getUnmergedBranches(this.sortedTrainBranches, stableBranch);
+      const branchDiff = difference(this.sortedTrainBranches, branchesToPush);
+      if (branchDiff.length > 0) {
+        console.log(`Not pushing already merged branches: ${branchDiff.join(', ')}`);
+      }
+    }
+    await this.git.pushBranches(branchesToPush, force, remote);
   }
-  return [sg, new GitClient(sg, shellJsExec)];
+
+  /**
+   * Reflows branches in PR train so that upstream changes are populated to
+   * downstream ones.
+   *
+   * @param rebase If the strategy should be via rebasing, else merging.
+   */
+  public async reflowTrain(rebase: boolean) {
+    for (let i = 0; i < this.sortedTrainBranches.length - 1; ++i) {
+      const b1 = this.sortedTrainBranches[i];
+      const b2 = this.sortedTrainBranches[i + 1];
+      if (this.git.isBranchAncestor(b1, b2)) {
+        console.log(`Branch ${b1} is an ancestor of ${b2} => nothing to do`);
+        continue;
+      }
+      await this.git.combineBranches(rebase, b1, b2);
+      await sleep(MERGE_STEP_DELAY_MS);
+    }
+
+    await this.sg.checkout(this.currentBranch);
+  }
+
+  /**
+   * Creates and updates the PRs in the PR train.
+   *
+   * @param remote The name of the remote to update PRs on.
+   * @param stableBranch The stable branch PRs will merge into.
+   */
+  public async ensurePrsExist(remote: string, stableBranch: string) {
+    await ensurePrsExist(
+        this.sg, this.sortedTrainBranches, this.combinedTrainBranch,
+        remote, stableBranch);
+  }
 }
 
 async function main() {
-  const program = createCommand();
-  program
-    .version(packageFile.version)
-    .option('--init', 'Creates a .pr-train.yml file with an example configuration')
-    .option('-p, --push', 'Push changes')
-    .option('-l, --list', 'List branches in current train')
-    .option('-r, --rebase', 'Rebase branches rather than merging them')
-    .option('-f, --force', 'Force push to remote')
-    .option('--push-merged', 'Push all branches (inclusing those that have already been merged into stable-branch)')
-    .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to master.', 'master')
-    .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
-    .option('-c, --create-prs', 'Create GitHub PRs from your train branches');
-
-  program.on('--help', () => {
-    console.log('');
-    console.log('  Switching branches:');
-    console.log('');
-    console.log(
-      '    $ `git pr-train <index>` will switch to branch with index <index> (e.g. 0 or 5). ' +
-        'If <index> is "combined", it will switch to the combined branch.'
-    );
-    console.log('');
-    console.log('  Creating GitHub PRs:');
-    console.log('');
-    console.log(
-      '    $ `git pr-train -p --create-prs` will create GH PRs for all branches in your train (with a "table of contents")'
-    );
-    console.log(
-      colors.italic(
-        `    Please note you'll need to create a \`\${HOME}/.pr-train\` file with your GitHub access token first.`
-      )
-    );
-    console.log('');
-  });
-
-  program.parse(process.argv);
-
-  program.createPrs && checkGHKeyExists();
-
   const [sg, git] = await initGit();
 
-  if (program.init) {
-    return initializePrTrain(sg);
+  const program = createCommand();
+  program
+      .version(packageFile.version);
+
+  program
+      .command('init')
+      .description('Creates a .pr-train.yml file with an example configuration')
+      .action(async () => {
+        initializePrTrain(sg)
+      });
+
+  program
+      .command('list')
+      .description('List branches in current train')
+      .action(async () => {
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        await prTrainClient.printBranchesInTrain();
+      });
+
+  program
+      .command('checkout [index]')
+      .description('Switches to the branch indexed. Prompts user to select branch if no index is provided.')
+      .action(async (index?: string) => {
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        if (index === undefined) {
+          await prTrainClient.selectBranchInTrain();
+        } else {
+          await prTrainClient.switchToBranch(index);
+        }
+      });
+
+  program
+      .command('merge')
+      .description('Reflow PR train merging upstream changes into the downstream branches.')
+      .action(async () => {
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        await prTrainClient.printBranchesInTrain();
+        await prTrainClient.reflowTrain(/*rebase=*/false);
+      });
+
+  program
+      .command('rebase')
+      .description('Reflow PR train rebasing downstream branches onto upstream changes.')
+      .action(async () => {
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        await prTrainClient.printBranchesInTrain();
+        await prTrainClient.reflowTrain(/*rebase=*/true);
+      });
+
+  interface PushCommandOptions {
+    force: boolean;
+    pushMerged: boolean;
+    stableBranch: string;
+    remote: string;
   }
+  program
+      .command('push')
+      .description('Push changes')
+      .option('-f, --force', 'Force push to remote')
+      .option('--push-merged', 'Push all branches (inclusing those that have already been merged into stable-branch)')
+      .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to master.', 'master')
+      .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
+      .action(async (options: PushCommandOptions) => {
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        await prTrainClient.printBranchesInTrain();
+        const { force, pushMerged, remote, stableBranch } = options;
+        await prTrainClient.findAndPushBranches(pushMerged, force, remote, stableBranch);
+      });
 
-  let ymlConfig;
-  try {
-    ymlConfig = await loadConfig(sg);
-  } catch (e) {
-    if (e instanceof yaml.YAMLException) {
-      console.log('There seems to be an error in `.pr-train.yml`.');
-      console.log(e.message);
-      process.exit(1);
-    }
-    console.log('`.pr-train.yml` file not found. Please run `git pr-train --init` to create one.'.red);
-    process.exit(1);
+  interface CreatePrsCommandOptions {
+    stableBranch: string;
+    remote: string;
   }
+  program
+      .command('create-prs')
+      .description('Create GitHub PRs from your train branches')
+      .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to master.', 'master')
+      .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
+      .action(async (options: CreatePrsCommandOptions) => {
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        checkGHKeyExists();
+        await prTrainClient.printBranchesInTrain();
+        await prTrainClient.ensurePrsExist(options.remote, options.stableBranch);
+      });
 
-  const { current: currentBranch, all: allBranches } = await sg.branchLocal();
-  const trainCfg = await getBranchesConfigInCurrentTrain(sg, ymlConfig);
-  if (!trainCfg) {
-    console.log(`Current branch ${currentBranch} is not a train branch.`);
-    process.exit(1);
-  }
-  const sortedTrainBranches = getBranchesInCurrentTrain(trainCfg);
-  const combinedTrainBranch = getCombinedBranch(trainCfg);
 
-  if (combinedTrainBranch && !allBranches.includes(combinedTrainBranch)) {
-    const lastBranchBeforeCombined = sortedTrainBranches[sortedTrainBranches.length - 2];
-    await sg.raw(['branch', combinedTrainBranch, lastBranchBeforeCombined]);
-  }
-
-  await handleSwitchToBranchCommand(
-      sg, sortedTrainBranches, combinedTrainBranch, program.args[0]);
-
-  await printBranchesInTrain(sg, sortedTrainBranches, currentBranch,
-                             combinedTrainBranch, program.list);
-  if (program.list) {
-    return;
-  }
-
-  // If we're creating PRs, don't combine branches (that might change branch HEADs and consequently
-  // the PR titles and descriptions). Just push and create the PRs.
-  if (program.createPrs) {
-    await findAndPushBranches(git, sortedTrainBranches, program.pushMerged,
-                              program.force, program.remote, program.stableBranch);
-    await ensurePrsExist(sg, sortedTrainBranches, combinedTrainBranch,
-                         program.remote, program.stableBranch);
-    return;
-  }
-
-  for (let i = 0; i < sortedTrainBranches.length - 1; ++i) {
-    const b1 = sortedTrainBranches[i];
-    const b2 = sortedTrainBranches[i + 1];
-    if (git.isBranchAncestor(b1, b2)) {
-      console.log(`Branch ${b1} is an ancestor of ${b2} => nothing to do`);
-      continue;
-    }
-    await git.combineBranches(program.rebase, b1, b2);
-    await sleep(MERGE_STEP_DELAY_MS);
-  }
-
-  if (program.push || program.pushMerged) {
-    await findAndPushBranches(git, sortedTrainBranches, program.pushMerged,
-                              program.force, program.remote, program.stableBranch);
-  }
-
-  await sg.checkout(currentBranch);
+  await program.parseAsync(process.argv);
+  if (!program.args.length) program.help();
 }
 
 main().catch(e => {

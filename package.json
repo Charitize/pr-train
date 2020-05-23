@@ -2,9 +2,12 @@
   "name": "git-pr-train",
   "version": "2.4.1",
   "description": "A tool to help manage PR chains",
-  "main": "index.js",
+  "main": "./index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc -p tsconfig.json",
+    "build:watch": "tsc -w -p tsconfig.json",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "npm run build"
   },
   "bin": {
     "git-pr-train": "./index.js"
@@ -20,7 +23,7 @@
   },
   "dependencies": {
     "colors": "^1.2.1",
-    "commander": "^2.15.0",
+    "commander": "^5.0.0",
     "figlet": "^1.2.0",
     "inquirer": "^6.2.1",
     "js-yaml": "^3.13.1",
@@ -32,9 +35,11 @@
     "progress": "^2.0.0",
     "promptly": "^3.0.3",
     "shelljs": "^0.8.3",
-    "simple-git": "^1.102.0"
+    "simple-git": "^1.103.0"
   },
   "devDependencies": {
-    "@types/js-yaml": "^3.11.2"
+    "@types/js-yaml": "^3.11.2",
+    "@types/node": "^13.9.5",
+    "typescript": "^3.8.3"
   }
 }

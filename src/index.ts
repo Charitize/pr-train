@@ -6,7 +6,7 @@ import { createCommand } from 'commander';
 import emoji = require('node-emoji');
 import fs = require('fs');
 import yaml = require('js-yaml');
-import { ensurePrsExist, checkGHKeyExists } from './github';
+import { GitHubClient, checkGHKeyExists } from './github';
 import {DEFAULT_REMOTE, MERGE_STEP_DELAY_MS} from './consts';
 import path = require('path');
 // @ts-ignore
@@ -318,9 +318,10 @@ class PRTrainClient {
    * @param stableBranch The stable branch PRs will merge into.
    */
   public async ensurePrsExist(remote: string, stableBranch: string) {
-    await ensurePrsExist(
-        this.sg, this.sortedTrainBranches, this.combinedTrainBranch,
-        remote, stableBranch);
+    const gitHubClient = new GitHubClient(this.sg);
+    await gitHubClient.ensurePrsExist(
+        this.sortedTrainBranches, this.combinedTrainBranch, remote,
+        stableBranch);
   }
 }
 

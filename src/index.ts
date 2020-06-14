@@ -168,6 +168,26 @@ async function initializePrTrain(sg: SimpleGit) {
   return;
 }
 
+
+/**
+ * Parses a range string in the form <start>..<end> into integer indices ready
+ * for a slice operation.
+ *
+ * Thus, the return for example "11..15" will be [11, 16].
+ */
+function rangeStringToRange(rangeString: string): [number, number] {
+  const matches = rangeString.match(/(?<start>\d+)\.\.(?<end>\d+)/);
+  if (matches === null || matches === undefined) {
+    throw new Error("Range string must be in form <start>..<end>");
+  }
+  const { start, end } = matches.groups as { start: string, end: string};
+  return [parseInt(start), parseInt(end) + 1];
+}
+
+function commaSeparatedList(value, _) {
+  return value.split(',');
+}
+
 /**
  * A client for performing train operations on a sequence of PRs.
  */
@@ -281,13 +301,20 @@ class PRTrainClient {
    * @param remote The git remote to push to.
    * @param stableBranch The stable branch to merge into. Often master, but in
    *                     many cases is develop or other branches to base off of.
+   * @param rangeString Range of branches to push in the notation <start>..<end>
+   *                    (inclusive.)
    */
   public async findAndPushBranches(
-      pushMerged: boolean, force: boolean, remote: string, stableBranch: string) {
-    let branchesToPush = this.sortedTrainBranches;
+      pushMerged: boolean, force: boolean, remote: string, stableBranch: string,
+      rangeString?: string) {
+    const range = rangeString
+        ? rangeStringToRange(rangeString)
+        : [0, this.sortedTrainBranches.length];
+    const requestedBranches = this.sortedTrainBranches.slice(...range);
+    let branchesToPush = requestedBranches;
     if (!pushMerged) {
-      branchesToPush = await this.git.getUnmergedBranches(this.sortedTrainBranches, stableBranch);
-      const branchDiff = difference(this.sortedTrainBranches, branchesToPush);
+      branchesToPush = await this.git.getUnmergedBranches(branchesToPush, stableBranch);
+      const branchDiff = difference(requestedBranches, branchesToPush);
       if (branchDiff.length > 0) {
         console.log(`Not pushing already merged branches: ${branchDiff.join(', ')}`);
       }
@@ -321,11 +348,19 @@ class PRTrainClient {
    *
    * @param remote The name of the remote to update PRs on.
    * @param stableBranch The stable branch PRs will merge into.
+   * @param rangeString Range of branches to create PRs for in the notation
+   *                    <start>..<end> (inclusive.)
    */
-  public async ensurePrsExist(remote: string, stableBranch: string) {
+  public async ensurePrsExist(remote: string, stableBranch: string,
+                              rangeString?: string) {
+    const range = rangeString
+        ? rangeStringToRange(rangeString)
+        : [0, this.sortedTrainBranches.length];
+    const requestedBranches = this.sortedTrainBranches.slice(...range);
+
     const gitHubClient = new GitHubClient(this.sg);
     await gitHubClient.ensurePrsExist(
-        this.sortedTrainBranches, this.combinedTrainBranch, remote,
+        requestedBranches, this.combinedTrainBranch, remote,
         stableBranch);
   }
 }
@@ -425,37 +460,42 @@ async function main() {
   interface PushCommandOptions {
     force: boolean;
     pushMerged: boolean;
+    range: string;
     stableBranch: string;
     remote: string;
   }
   program
       .command('push')
-      .description('Push changes')
+      .description('Push changes.')
       .option('-f, --force', 'Force push to remote')
       .option('--push-merged', 'Push all branches (inclusing those that have already been merged into stable-branch)')
+      .option('--range <range>', 'Pushes only those branches in a range. Uses index..index notation. (e.g. 0..17)')
       .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to master.', 'master')
       .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
       .action(async (options: PushCommandOptions) => {
         const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
         await prTrainClient.printBranchesInTrain();
-        const { force, pushMerged, remote, stableBranch } = options;
-        await prTrainClient.findAndPushBranches(pushMerged, force, remote, stableBranch);
+        const { force, pushMerged, range, remote, stableBranch } = options;
+        await prTrainClient.findAndPushBranches(
+            pushMerged, force, remote, stableBranch, range);
       });
 
   interface CreatePrsCommandOptions {
     stableBranch: string;
+    range: string;
     remote: string;
   }
   program
       .command('create-prs')
       .description('Create GitHub PRs from your train branches')
+      .option('--range <range>', 'Pushes only those branches in a range. Uses index..index notation. (e.g. 0..17)')
       .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to master.', 'master')
       .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
       .action(async (options: CreatePrsCommandOptions) => {
         const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
         checkGHKeyExists();
         await prTrainClient.printBranchesInTrain();
-        await prTrainClient.ensurePrsExist(options.remote, options.stableBranch);
+        await prTrainClient.ensurePrsExist(options.remote, options.stableBranch, options.range);
       });
 
 

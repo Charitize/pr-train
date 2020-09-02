@@ -57,7 +57,7 @@ interface PRTrainConfig {
  */
 async function loadConfig(sg): Promise<PRTrainConfig> {
   const path = await getConfigPath(sg);
-  return yaml.safeLoad(fs.readFileSync(path, 'utf8'));
+  return yaml.safeLoad(fs.readFileSync(path, 'utf8')) as Promise<PRTrainConfig>;
 }
 
 async function loadConfigOrExit(sg): Promise<PRTrainConfig> {

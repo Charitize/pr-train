@@ -6,6 +6,12 @@ import emoji = require('node-emoji');
 import { sleep } from "./sleep";
 
 
+export enum RebaseOption {
+  MERGE_ONLY,
+  SIMPLE_REBASE,
+  SINGLE_COMMIT_REBASE
+}
+
 /**
  * Local git convenience wrapper around the SimpleGit client.
  */
@@ -40,23 +46,34 @@ export class GitClient {
    * @param to The branch to incorporate the changes into, by rebasing onto the
    *           from branch or merging into from the from branch.
    */
-  public async combineBranches(rebase: boolean, from: string, to: string) {
+  public async combineBranches(rebase: RebaseOption, from: string, to: string) {
     if (rebase) {
       process.stdout.write(`rebasing ${to} onto branch ${from}... `);
     } else {
       process.stdout.write(`merging ${from} into branch ${to}... `);
     }
     try {
-      await this.sg.checkout(to);
-      await (rebase ? this.sg.rebase([from]) : this.sg.merge([from]));
+      await this.performCombineBranches(rebase, from, to);
     } catch (e) {
       if (!e.conflicts || e.conflicts.length === 0) {
         await sleep(MERGE_STEP_DELAY_WAIT_FOR_LOCK);
-        await this.sg.checkout(to);
-        await (rebase ? this.sg.rebase([from]) : this.sg.merge([from]));
+        await this.performCombineBranches(rebase, from, to);
       }
     }
     console.log(emoji.get('white_check_mark'));
+  }
+
+  private async performCombineBranches(rebase: RebaseOption, from: string, to: string) {
+    await this.sg.checkout(to);
+    if (rebase == RebaseOption.MERGE_ONLY) {
+      await this.sg.merge([from]);
+    } else {
+      let rebaseOptions = ['--onto', from];
+      if (rebase === RebaseOption.SINGLE_COMMIT_REBASE) {
+        rebaseOptions = rebaseOptions.concat([`${to}~1`, to])
+      }
+      await this.sg.rebase(rebaseOptions);
+    }
   }
 
   /**

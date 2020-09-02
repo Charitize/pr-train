@@ -13,7 +13,7 @@ import path = require('path');
 import packageFile = require('../package.json');
 import inquirer = require('inquirer');
 import { SimpleGit } from "simple-git/promise";
-import { GitClient } from "./git";
+import { GitClient, RebaseOption } from "./git";
 import { sleep } from "./sleep";
 import { exec as shellJsExec } from 'shelljs';
 
@@ -328,7 +328,7 @@ class PRTrainClient {
    *
    * @param rebase If the strategy should be via rebasing, else merging.
    */
-  public async reflowTrain(rebase: boolean) {
+  public async reflowTrain(rebase: RebaseOption) {
     for (let i = 0; i < this.sortedTrainBranches.length - 1; ++i) {
       const b1 = this.sortedTrainBranches[i];
       const b2 = this.sortedTrainBranches[i + 1];
@@ -424,16 +424,18 @@ async function main() {
       .action(async () => {
         const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
         await prTrainClient.printBranchesInTrain();
-        await prTrainClient.reflowTrain(/*rebase=*/false);
+        await prTrainClient.reflowTrain(RebaseOption.MERGE_ONLY);
       });
 
   program
       .command('rebase')
       .description('Reflow PR train rebasing downstream branches onto upstream changes.')
-      .action(async () => {
+      .option('--amends-only', 'Rebases a single commit. This is dangerous if you don\'t amend all commits in the pr-train.')
+      .action(async ({ amendsOnly }: { amendsOnly: boolean }) => {
         const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
         await prTrainClient.printBranchesInTrain();
-        await prTrainClient.reflowTrain(/*rebase=*/true);
+        const rebaseOption = amendsOnly ? RebaseOption.SINGLE_COMMIT_REBASE : RebaseOption.SIMPLE_REBASE;
+        await prTrainClient.reflowTrain(rebaseOption);
       });
 
   const infoCommand = program

@@ -220,22 +220,27 @@ class PRTrainClient {
     return this.sortedTrainBranches.indexOf(this.currentBranch);
   }
 
+  public branchNameAtIndex(i: number | 'combined'): string {
+    let branch;
+    if (i === 'combined') {
+      branch = this.combinedTrainBranch;
+    } else {
+      branch = this.sortedTrainBranches[i];
+    }
+    if (!branch) {
+      console.log(`Could not find branch with index ${i}`.red);
+      process.exit(3);
+    }
+    return branch;
+  }
+
   /**
    * Switches the branch to the branch named as the first program argument.
    *
    * "combined" is handled specially to switch to the tip branch.
    */
   public async switchToBranch(switchToBranchIndex: number | 'combined') {
-    let targetBranch;
-    if (switchToBranchIndex === 'combined') {
-      targetBranch = this.combinedTrainBranch;
-    } else {
-      targetBranch = this.sortedTrainBranches[switchToBranchIndex];
-    }
-    if (!targetBranch) {
-      console.log(`Could not find branch with index ${switchToBranchIndex}`.red);
-      process.exit(3);
-    }
+    const targetBranch = this.branchNameAtIndex(switchToBranchIndex);
     await this.sg.checkout(targetBranch);
     console.log(`Switched to branch ${targetBranch}`);
     process.exit(0);
@@ -393,6 +398,28 @@ async function main() {
         const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
         await prTrainClient.printBranchesInTrain();
         await prTrainClient.reflowTrain(/*rebase=*/true);
+      });
+
+  const infoCommand = program
+      .command('info')
+      .description('Gets information about the pr-train.');
+
+  infoCommand
+      .command('next')
+      .description('Gets the next branch name')
+      .action(async() => {
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const index = prTrainClient.currentIndex();
+        await console.log(prTrainClient.branchNameAtIndex(index + 1));
+      });
+
+  infoCommand
+      .command('previous')
+      .description('Gets the previous branch name')
+      .action(async() => {
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const index = prTrainClient.currentIndex();
+        await console.log(prTrainClient.branchNameAtIndex(index - 1));
       });
 
   interface PushCommandOptions {

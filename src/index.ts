@@ -348,11 +348,12 @@ class PRTrainClient {
    *
    * @param remote The name of the remote to update PRs on.
    * @param stableBranch The stable branch PRs will merge into.
+   * @param reviewers List of usernames to request review on the PR.
    * @param rangeString Range of branches to create PRs for in the notation
    *                    <start>..<end> (inclusive.)
    */
   public async ensurePrsExist(remote: string, stableBranch: string,
-                              rangeString?: string) {
+                              reviewers: string[], rangeString?: string) {
     const range = rangeString
         ? rangeStringToRange(rangeString)
         : [0, this.sortedTrainBranches.length];
@@ -361,7 +362,7 @@ class PRTrainClient {
     const gitHubClient = new GitHubClient(this.sg);
     await gitHubClient.ensurePrsExist(
         requestedBranches, this.combinedTrainBranch, remote,
-        stableBranch);
+        stableBranch, reviewers);
   }
 }
 
@@ -484,18 +485,22 @@ async function main() {
     stableBranch: string;
     range: string;
     remote: string;
+    reviewers: string[];
   }
   program
       .command('create-prs')
       .description('Create GitHub PRs from your train branches')
       .option('--range <range>', 'Pushes only those branches in a range. Uses index..index notation. (e.g. 0..17)')
+      .option('--reviewers <reviewers>', 'Comma separated list of reviewers to request review of the PR.', commaSeparatedList, [])
       .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to master.', 'master')
       .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
       .action(async (options: CreatePrsCommandOptions) => {
         const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
         checkGHKeyExists();
         await prTrainClient.printBranchesInTrain();
-        await prTrainClient.ensurePrsExist(options.remote, options.stableBranch, options.range);
+        await prTrainClient.ensurePrsExist(
+            options.remote, options.stableBranch, options.reviewers,
+            options.range);
       });
 
 

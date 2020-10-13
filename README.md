@@ -13,27 +13,32 @@ Doing those two things manually can be (very) tedious and frustrating, believe y
 
 ## Usage
 
-Install with `npm i -g git-pr-train`.
+Clone pr-train's repo, and install it with `npm`.
 
-Run `git pr-train --init` in your repo root to generate a `.pr-train.yml` file (don't forget to gitignore).
+```sh
+$ git clone git@github.com:Charitize/pr-train.git
+$ npm i -g pr-train
+```
+
+Run `git pr-train init` in your repo root to generate a `.pr-train.yml` file (don't forget to gitignore).
 
 Now whenever you have a chain of branches, list them in `.pr-train.yml` to tell pr-train which branches form the chain and you're good to go.
 
 ### Basic usage examples
 
-- `git pr-train -p` will merge branches sequentially one into another and push
-- `git pr-train -r -p -f` will rebase branches instead of merging and then push with `--force`.
-- `git pr-train -h` to print usage information
+- `git pr-train list` will list the branches in the current train
+- `git pr-train -h` to print tool's usage information
+- `git pr-train push -h` to print command's usage information
 
 ### Automatically create GitHub PRs from chained branches
 
 **Pre-requisite**: Create a `${HOME}/.pr-train` file with a single line which is your GH personal access token (you can create one [here](https://github.com/settings/tokens)). The `repo` scope, with ` Full control of private repositories` is needed.
 
-Run `git pr-train -p --create-prs` to create GitHub PRs with a "content table" section. PR titles are taken from the commit message titles of each branch HEAD. You'll be promted before the PRs are created.
+Run `git pr-train create-prs` to create GitHub PRs with a "content table" section. PR titles are taken from the commit message titles of each branch HEAD. You'll be promted before the PRs are created.
 
-If you run with `--create-prs` again, `pr-train` will only override the Table of Contents in your PR, it will _not_ change the rest of the PR descriptions.
+If you run with `create-prs` again, `pr-train` will only override the Table of Contents in your PR, it will _not_ change the rest of the PR descriptions.
 
-**Pro-tip**: If you want to udpate the ToCs in your GitHub PRs, just update the PR titles and re-run pr train with `--create-prs` - it will do the right thing.
+**Pro-tip**: If you want to udpate the ToCs in your GitHub PRs, just update the PR titles and re-run pr train with `create-prs` - it will do the right thing.
 
 ## Example with explanation
 
@@ -49,7 +54,7 @@ If you modify a branch (or e.g. merge/rebase `fred_billing-refactor_frontend_bit
 
 If you wish, it also makes sure there is a "combined" branch (which contains the code of all subbranches and you can build it and run tests on it - please see the `Chained PR workflows` section below).
 
-Now everytime you make a change to any branch in the train, run `git pr-train -p` to merge and push branches or `git pr-train -rpf` to rebase branches and force-push (if you prefer rebasing).
+Now everytime you make a change to any branch in the train, run `git pr-train push` to push branches or `git pr-train rebase ` to rebase branches and ``git pr-train rebase -f` to force-push (if you prefer rebasing).
 
 ### `.pr-train.yml` config
 
@@ -105,6 +110,6 @@ Unlike the sub-branches, the combined branch doesn't need to exist when you run 
 
 ## Running PR train
 
-Run `git pr-train` in your working dir when you're on any branch that belongs to a PR train. You don't have to be on the first branch, any branch will do. Use `-r/--rebase` option if you'd like to rebase branches on top of each other rather than merge (note: you will have to push with `git pr-train -pf` in that case).
+Run `git pr-train` in your working dir when you're on any branch that belongs to a PR train. You don't have to be on the first branch, any branch will do. Use `rebase` option if you'd like to rebase branches on top of each other rather than merge (note: you will have to push with `git pr-train push -f` in that case).
 
-`git pr-train -p` will merge/rebase and push your updated changes to remote `origin` (configurable via `--remote` option).
+`git pr-train` will merge/rebase and push your updated changes to remote `origin` (configurable via `--remote` option).

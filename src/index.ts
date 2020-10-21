@@ -473,7 +473,7 @@ async function main() {
       .option('-f, --force', 'Force push to remote')
       .option('--push-merged', 'Push all branches (inclusing those that have already been merged into stable-branch)')
       .option('--range <range>', 'Pushes only those branches in a range. Uses index..index notation. (e.g. 0..17)')
-      .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to master.', 'master')
+      .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to develop.', 'develop')
       .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
       .action(async (options: PushCommandOptions) => {
         const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);

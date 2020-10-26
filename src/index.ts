@@ -494,7 +494,7 @@ async function main() {
       .description('Create GitHub PRs from your train branches')
       .option('--range <range>', 'Pushes only those branches in a range. Uses index..index notation. (e.g. 0..17)')
       .option('--reviewers <reviewers>', 'Comma separated list of reviewers to request review of the PR.', commaSeparatedList, [])
-      .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to master.', 'master')
+      .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to develop.', 'develop')
       .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
       .action(async (options: CreatePrsCommandOptions) => {
         const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);

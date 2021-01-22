@@ -13,7 +13,14 @@ Doing those two things manually can be (very) tedious and frustrating, believe y
 
 ## Usage
 
-Install the tool from GitHub repo with `npm`.
+Clone pr-train's repo, and install it with `npm`.
+
+```sh
+$ git clone git@github.com:Charitize/pr-train.git
+$ npm i -g ./pr-train
+```
+
+Or install the tool from GitHub repo with `npm`.
 
 ```sh
 $ npm i -g https://github.com/Charitize/pr-train.git

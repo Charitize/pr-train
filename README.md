@@ -17,7 +17,13 @@ Clone pr-train's repo, and install it with `npm`.
 
 ```sh
 $ git clone git@github.com:Charitize/pr-train.git
-$ npm i -g pr-train
+$ npm i -g ./pr-train
+```
+
+Or install the tool from GitHub repo with `npm`.
+
+```sh
+$ npm i -g https://github.com/Charitize/pr-train.git
 ```
 
 Run `git pr-train init` in your repo root to generate a `.pr-train.yml` file (don't forget to gitignore).

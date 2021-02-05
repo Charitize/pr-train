@@ -5,9 +5,10 @@
   "main": "./index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:postinstall": "./node_modules/.bin/tsc -p tsconfig.json",
     "build:watch": "tsc -w -p tsconfig.json",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prepare": "npm run build"
+    "prepare": "npm run build:postinstall"
   },
   "bin": {
     "git-pr-train": "./index.js"
@@ -35,11 +36,13 @@
     "progress": "^2.0.0",
     "promptly": "^3.0.3",
     "shelljs": "^0.8.3",
-    "simple-git": "^1.103.0"
+    "simple-git": "^1.103.0",
+    "typescript": "^3.8.3",
+    "@types/js-yaml": "^3.11.2",
+    "@types/node": "^13.9.5"
   },
   "devDependencies": {
-    "@types/js-yaml": "^3.11.2",
-    "@types/node": "^13.9.5",
-    "typescript": "^3.8.3"
+    
+    
   }
 }

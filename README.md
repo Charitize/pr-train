@@ -32,9 +32,12 @@ Now whenever you have a chain of branches, list them in `.pr-train.yml` to tell 
 
 ### Basic usage examples
 
-- `git pr-train list` will list the branches in the current train
 - `git pr-train -h` to print tool's usage information
 - `git pr-train push -h` to print command's usage information
+- `git pr-train list` will list the branches in the current train
+- `git pr-train merge` will merge branches sequentially one into another
+- `git pr-train rebase` will rebase branches instead of merging
+- `git pr-train push` will push the branches, while `git pr-train push --force` will push with `--force`.
 
 ### Automatically create GitHub PRs from chained branches
 
@@ -44,7 +47,7 @@ Run `git pr-train create-prs` to create GitHub PRs with a "content table" sectio
 
 If you run with `create-prs` again, `pr-train` will only override the Table of Contents in your PR, it will _not_ change the rest of the PR descriptions.
 
-**Pro-tip**: If you want to udpate the ToCs in your GitHub PRs, just update the PR titles and re-run pr train with `create-prs` - it will do the right thing.
+**Pro-tip**: If you want to update the ToCs in your GitHub PRs, just update the PR titles and re-run pr train with `create-prs` - it will do the right thing.
 
 ## Example with explanation
 
@@ -60,7 +63,7 @@ If you modify a branch (or e.g. merge/rebase `fred_billing-refactor_frontend_bit
 
 If you wish, it also makes sure there is a "combined" branch (which contains the code of all subbranches and you can build it and run tests on it - please see the `Chained PR workflows` section below).
 
-Now everytime you make a change to any branch in the train, run `git pr-train push` to push branches or `git pr-train rebase ` to rebase branches and ``git pr-train rebase -f` to force-push (if you prefer rebasing).
+Now everytime you make a change to any branch in the train, run `git pr-train merge && git pr-train push` to merge and push branches or `git pr-train rebase && git pr-train push --force` to rebase branches and force-push (if you prefer rebasing).
 
 ### `.pr-train.yml` config
 
@@ -116,6 +119,6 @@ Unlike the sub-branches, the combined branch doesn't need to exist when you run 
 
 ## Running PR train
 
-Run `git pr-train` in your working dir when you're on any branch that belongs to a PR train. You don't have to be on the first branch, any branch will do. Use `rebase` option if you'd like to rebase branches on top of each other rather than merge (note: you will have to push with `git pr-train push -f` in that case).
+Run `git pr-train` in your working dir when you're on any branch that belongs to a PR train. You don't have to be on the first branch, any branch will do. Use `rebase` option if you'd like to rebase branches on top of each other rather than merge (note: you will have to push with `git pr-train push --force` in that case).
 
 `git pr-train` will merge/rebase and push your updated changes to remote `origin` (configurable via `--remote` option).

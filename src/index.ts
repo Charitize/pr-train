@@ -71,7 +71,9 @@ async function loadConfigOrExit(sg): Promise<PRTrainConfig> {
       process.exit(1);
     }
     console.log('`.pr-train.yml` file not found. Please run `git pr-train --init` to create one.'.red);
-    process.exit(1);
+    return {
+      trains: [],
+    };
   }
   return ymlConfig;
 }
@@ -202,9 +204,8 @@ class PRTrainClient {
    *
    * This asynchronously creates the required dependencies for PRTrainClient.
    */
-  public static async create(sg: SimpleGit, git: GitClient) {
-    const ymlConfig = await loadConfigOrExit(sg);
-
+  public static async create(sg: SimpleGit, git: GitClient,
+                             ymlConfig: PRTrainConfig) {
     const { current: currentBranch, all: allBranches } = await sg.branchLocal();
     const trainCfg = await getBranchesConfigInCurrentTrain(sg, ymlConfig);
     if (!trainCfg) {
@@ -373,6 +374,8 @@ async function main() {
   program
       .version(packageFile.version);
 
+  const config = await loadConfigOrExit(sg);
+
   program
       .command('init')
       .description('Creates a .pr-train.yml file with an example configuration')
@@ -384,7 +387,7 @@ async function main() {
       .command('list')
       .description('List branches in current train')
       .action(async () => {
-        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);
         await prTrainClient.printBranchesInTrain();
       });
 
@@ -392,7 +395,7 @@ async function main() {
       .command('checkout [index]')
       .description('Switches to the branch indexed. Prompts user to select branch if no index is provided.')
       .action(async (index?: number) => {
-        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);
         if (index === undefined) {
           await prTrainClient.selectBranchInTrain();
         } else {
@@ -404,7 +407,7 @@ async function main() {
       .command('previous')
       .description('Switches to the previous branch in the train.')
       .action(async () => {
-        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);
         const index = prTrainClient.currentIndex();
         await prTrainClient.switchToBranch(index - 1);
       });
@@ -413,7 +416,7 @@ async function main() {
       .command('next')
       .description('Switches to the next branch in the train.')
       .action(async () => {
-        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);
         const index = prTrainClient.currentIndex();
         await prTrainClient.switchToBranch(index + 1);
       });
@@ -422,7 +425,7 @@ async function main() {
       .command('merge')
       .description('Reflow PR train merging upstream changes into the downstream branches.')
       .action(async () => {
-        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);
         await prTrainClient.printBranchesInTrain();
         await prTrainClient.reflowTrain(RebaseOption.MERGE_ONLY);
       });
@@ -432,7 +435,7 @@ async function main() {
       .description('Reflow PR train rebasing downstream branches onto upstream changes.')
       .option('--amends-only', 'Rebases a single commit. This is dangerous if you don\'t amend all commits in the pr-train.')
       .action(async ({ amendsOnly }: { amendsOnly: boolean }) => {
-        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);
         await prTrainClient.printBranchesInTrain();
         const rebaseOption = amendsOnly ? RebaseOption.SINGLE_COMMIT_REBASE : RebaseOption.SIMPLE_REBASE;
         await prTrainClient.reflowTrain(rebaseOption);
@@ -446,7 +449,7 @@ async function main() {
       .command('next')
       .description('Gets the next branch name')
       .action(async() => {
-        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);
         const index = prTrainClient.currentIndex();
         await console.log(prTrainClient.branchNameAtIndex(index + 1));
       });
@@ -455,7 +458,7 @@ async function main() {
       .command('previous')
       .description('Gets the previous branch name')
       .action(async() => {
-        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);
         const index = prTrainClient.currentIndex();
         await console.log(prTrainClient.branchNameAtIndex(index - 1));
       });
@@ -476,7 +479,7 @@ async function main() {
       .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to develop.', 'develop')
       .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
       .action(async (options: PushCommandOptions) => {
-        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);
         await prTrainClient.printBranchesInTrain();
         const { force, pushMerged, range, remote, stableBranch } = options;
         await prTrainClient.findAndPushBranches(
@@ -497,7 +500,7 @@ async function main() {
       .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to develop.', 'develop')
       .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
       .action(async (options: CreatePrsCommandOptions) => {
-        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git);
+        const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);
         checkGHKeyExists();
         await prTrainClient.printBranchesInTrain();
         await prTrainClient.ensurePrsExist(

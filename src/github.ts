@@ -269,10 +269,14 @@ function readGHKey(): string {
  * @return The updated body for the PR to use.
  */
 function upsertNavigationInBody(newNavigation: string, body: string): string {
-  if (body.match(/<pr-train-toc>/)) {
-    return body.replace(/<pr-train-toc>[^]*<\/pr-train-toc>/, newNavigation);
+  if (body) {
+    if (body.match(/<pr-train-toc>/)) {
+      return body.replace(/<pr-train-toc>[^]*<\/pr-train-toc>/, newNavigation);
+    } else {
+      return body + '\n' + newNavigation;
+    }
   } else {
-    return body + '\n' + newNavigation;
+    return newNavigation;
   }
 }
 

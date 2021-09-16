@@ -54,10 +54,12 @@ export class GitHubClient {
    *                     master, but might be develop.
    * @param reviewers List of reviewers, which should be requested to review the
    *                  PR.
+   * @param draft If true, creates PRs as draft PRs.
    */
   public async ensurePrsExist(
       allBranches: string[], combinedBranch: string | undefined,
-      remote: string, stableBranch: string, reviewers: string[]) {
+      remote: string, stableBranch: string, reviewers: string[],
+      draft: boolean) {
     //const allBranches = combinedBranch ? sortedBranches.concat(combinedBranch) : sortedBranches;
     const octoClient = octo.client(readGHKey());
     // TODO: take remote name from `-r` value.
@@ -139,6 +141,7 @@ export class GitHubClient {
           base,
           title,
           body,
+          draft,
         };
         process.stdout.write(`Creating PR for branch "${branch}"...`);
         try {

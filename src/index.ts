@@ -44,6 +44,9 @@ interface TrainConfig {
 }
 
 interface PRTrainConfig {
+  /** The branch merges should be checked against as the mainline branch. */
+  stableBranch: string;
+
   trains: TrainConfig[];
 }
 
@@ -61,6 +64,11 @@ async function loadConfig(sg): Promise<PRTrainConfig> {
 }
 
 async function loadConfigOrExit(sg): Promise<PRTrainConfig> {
+  const defaultConfig = {
+    stableBranch: 'develop',
+    trains: [],
+  };
+
   let ymlConfig;
   try {
     ymlConfig = await loadConfig(sg);
@@ -71,11 +79,12 @@ async function loadConfigOrExit(sg): Promise<PRTrainConfig> {
       process.exit(1);
     }
     console.log('`.pr-train.yml` file not found. Please run `git pr-train --init` to create one.'.red);
-    return {
-      trains: [],
-    };
+    return defaultConfig;
   }
-  return ymlConfig;
+  return {
+    ...defaultConfig,
+    ...ymlConfig,
+  };
 }
 
 /**
@@ -476,7 +485,7 @@ async function main() {
       .option('-f, --force', 'Force push to remote')
       .option('--push-merged', 'Push all branches (inclusing those that have already been merged into stable-branch)')
       .option('--range <range>', 'Pushes only those branches in a range. Uses index..index notation. (e.g. 0..17)')
-      .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to develop.', 'develop')
+      .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to develop.', config.stableBranch)
       .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
       .action(async (options: PushCommandOptions) => {
         const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);
@@ -497,7 +506,7 @@ async function main() {
       .description('Create GitHub PRs from your train branches')
       .option('--range <range>', 'Pushes only those branches in a range. Uses index..index notation. (e.g. 0..17)')
       .option('--reviewers <reviewers>', 'Comma separated list of reviewers to request review of the PR.', commaSeparatedList, [])
-      .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to develop.', 'develop')
+      .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to develop.', config.stableBranch)
       .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
       .action(async (options: CreatePrsCommandOptions) => {
         const prTrainClient: PRTrainClient = await PRTrainClient.create(sg, git, config);

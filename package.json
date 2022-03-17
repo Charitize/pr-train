@@ -35,7 +35,7 @@
     "progress": "^2.0.0",
     "promptly": "^3.0.3",
     "shelljs": "^0.8.3",
-    "simple-git": "^1.103.0"
+    "simple-git": "^3.3.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^3.11.2",

@@ -359,13 +359,14 @@ class PRTrainClient {
    * @param remote The name of the remote to update PRs on.
    * @param stableBranch The stable branch PRs will merge into.
    * @param reviewers List of usernames to request review on the PR.
+   * @param assumeYes Does not ask for confirmation to create and update.
    * @param draft Indicates if the PRs should be created as drafts.
    * @param rangeString Range of branches to create PRs for in the notation
    *                    <start>..<end> (inclusive.)
    */
   public async ensurePrsExist(remote: string, stableBranch: string,
-                              reviewers: string[], draft: boolean,
-                              rangeString?: string) {
+                              reviewers: string[], assumeYes: boolean,
+                              draft: boolean, rangeString?: string) {
     const range = rangeString
         ? rangeStringToRange(rangeString)
         : [0, this.sortedTrainBranches.length];
@@ -374,7 +375,7 @@ class PRTrainClient {
     const gitHubClient = new GitHubClient(this.sg);
     await gitHubClient.ensurePrsExist(
         requestedBranches, this.combinedTrainBranch, remote,
-        stableBranch, reviewers, draft);
+        stableBranch, reviewers, assumeYes, draft);
   }
 }
 
@@ -502,6 +503,7 @@ async function main() {
     range: string;
     remote: string;
     reviewers: string[];
+    assumeYes: boolean;
     draft: boolean;
   }
   program
@@ -509,6 +511,7 @@ async function main() {
       .description('Create GitHub PRs from your train branches')
       .option('--range <range>', 'Pushes only those branches in a range. Uses index..index notation. (e.g. 0..17)')
       .option('--reviewers <reviewers>', 'Comma separated list of reviewers to request review of the PR.', commaSeparatedList, [])
+      .option('-y, --yes, --assume-yes', 'Creates and updates PRs without confirmation.')
       .option('--draft', 'Creates PRs as drafts if true.', false)
       .option('--stable-branch <branch>', 'The branch used for the PR train to merge into. Defaults to develop.', config.stableBranch)
       .option('--remote <remote>', 'Set remote to push to. Defaults to "origin"', DEFAULT_REMOTE)
@@ -518,7 +521,7 @@ async function main() {
         await prTrainClient.printBranchesInTrain();
         await prTrainClient.ensurePrsExist(
             options.remote, options.stableBranch, options.reviewers,
-            options.draft, options.range);
+            options.assumeYes, options.draft, options.range);
       });
 
 

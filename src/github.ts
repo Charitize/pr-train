@@ -102,7 +102,7 @@ export class GitHubClient {
       process.exit(0);
     }
 
-    const nickAndRepoMatch = remoteUrl.match(/github\.com[/:](.*)\.git/);
+    const nickAndRepoMatch = remoteUrl.match(/github\.com[/:](.+/.+)(?:\.git/)?);
     if (nickAndRepoMatch === null || !nickAndRepoMatch[1]) {
       console.log(`I could not parse your remote ${remote} repo URL`.red);
       process.exit(4);
